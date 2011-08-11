@@ -1,0 +1,533 @@
+refactor my sleep log analysis app so that it can accept different string delimiters, but also accounts for incomplete string delimiters, either a missing start or finish and also let you specify number of previous weeks until the present
+
+10AUG2011WED
+              5:26pm
+I will now refactor my code so that the original model of the sleep log file is preserved, in case we need it for anything, before the model is modified so that all the sleep sessions are grouped according to the day they belong to.
+              5:29pm
+begin draft of code that creates a copy of the model of the sleep log file, before we modify the model to associate each day with its sleep sessions
+              5:36pm
+so now I have what I believe to be a bunch of code that, given a sleep log file, can create a model of the days in the log and its associated sleep sessions, I will collect them all together:
+
+# original dates hash
+odh = {}
+dates_array = a_hash.keys.sort
+dates_array.each do |a_key|
+  odh[a_key] = a_hash[a_key].dup
+end
+dates_array.each do |a_key|
+  if a_key == dates_array.first
+    # hash of times for first date
+    hfd = a_hash[dates_array.first]
+    times_array = hfd.keys
+    hfd.delete_if { |key, value| value.start_with?("woke") and key == times_array.first }
+  end
+  if a_key == dates_array.last
+    # hash of times for last date
+    hld = a_hash[dates_array.last]
+    times_array = hld.keys
+    hld.delete_if { |key, value| value.start_with?("turn in") and key == times_array.last }
+  end
+  # hash of times for a given date
+  hgd = a_hash[a_key]
+  times_array = hgd.keys.sort
+  # outer hash index
+  ohi = dates_array.index(a_key)
+  if hgd[times_array.last].start_with?("turn in")
+    # hash of times for the day after the given date
+    hdagd = a_hash[dates_array[ohi + 1]]
+    # next-day times_array
+    ndta = hdagd.keys.sort
+    if hdagd[ndta.first].start_with?("woke")
+      hgd[ndta.first] = hdagd[ndta.first]
+      deleted = hdagd.delete(ndta.first)
+    end
+  end
+end
+
+--
+
+# o_key == outer hash key
+a_hash.keys.each do |o_key|
+  inner_hash = a_hash[o_key]
+  inner_hash.delete_if do |key, value|
+    not value.start_with?("turn in", "woke")
+  end
+end
+
+--
+
+# display contents of hash
+a_hash.keys.sort.each {|a_key| p a_hash[a_key]}
+
+--
+
+require 'date'
+require 'time'
+
+f = open('sample_sleep.txt')
+# ra1 == ruby array, number 1
+ra1 = f.readlines
+a_hash = {}
+ra1.each do |line|
+  an_index = a_hash.length - 1
+  if line.index(/[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]{3}/) == 0
+    # ads = a date string
+    ads = line.rstrip
+    # ado = a date object
+    ado = Date.strptime(ads, "%d%b%Y%a")
+    a_hash[ado] ||= {}
+  elsif line.index(/             [0-9]{2}(:[0-9]{2})?(am|pm)/) == 0 or line.index(/              [0-9](:[0-9]{2})?(am|pm)/)
+    ado = a_hash.keys[an_index]
+    #p ado.to_s
+    # ats = a time string
+    ats = line.strip
+    # ato = a time object associated with a past date
+    ato = Time.parse(ats, ado)
+    p ato.to_s
+    a_hash[ado][ato] ||= ""
+  else
+    ado = a_hash.keys[an_index]
+    inner_hash = a_hash[ado]
+    log_entry = line.strip
+    a_hash[ado][inner_hash.keys.last] << log_entry
+  end
+end
+              5:54pm
+alright, collected all my code in an easy to understand way, so that the latest good code is at the top, with the oldest good code at the bottom, and the idea is, I want a way to easily copy and paste in irb so I can get to the latest state of development.  Now I will run all that code and test the result to make sure my assumption is correct, and my next move after that is to figure out some way to perform math, so I can tell how much sleep I've had per day.
+              6:18pm
+testing seems to confirm that my code is working correctly.  Now, to figure out some way to perform arithmetic on the sleep sessions, so I can get some idea of total hours of sleep:
+
+a_hash.keys.sort.each do |o_key|
+  p o_key.strftime("%d%b%Y%a").upcase
+  an_array = a_hash[o_key].keys.sort
+  a_size = an_array.size
+  # number of sleep sessions
+  noss = a_size / 2
+  count = 0
+  # total amount of sleep
+  tas = 0
+  an_array.each do |i_key|
+    if count % 2 == 0
+      turn_in = i_key
+      woke = an_array[count + 1]
+      # session length
+      sl = woke - turn_in
+      p Time.at(sl).utc.strftime("%I:%M")
+      tas += sl
+      if count == noss
+        a_total = Time.at(tas).utc.strftime("%I:%M")
+        tas = 0
+        puts "total sleep: #{a_total}", "\n"
+      end
+    end
+    count += 1
+  end
+end
+              8:01pm
+cool, I achieved my stated goal, then got the output on irb to have a newline between each day's report.  Now, my next move is to run this script on personal_log
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+09AUG2011TUE
+              1:45pm
+calls to either dup or clone should work the way I expect it to, given the following:
+
+irb(main):128:0> h
+=> {2=>"b", 3=>"c", 4=>"d"}
+irb(main):129:0> a1, a2 = [], []
+=> [[], []]
+irb(main):130:0> a1 << h
+=> [{2=>"b", 3=>"c", 4=>"d"}]
+irb(main):131:0> a2 << h.clone
+=> [{2=>"b", 3=>"c", 4=>"d"}]
+irb(main):132:0> h[1] = 'a'
+=> "a"
+irb(main):133:0> a1[0]
+=> {2=>"b", 3=>"c", 4=>"d", 1=>"a"}
+irb(main):134:0> a2[0]
+=> {2=>"b", 3=>"c", 4=>"d"}
+irb(main):135:0> a3 = []
+=> []
+irb(main):136:0> a3 << h.dup
+=> [{2=>"b", 3=>"c", 4=>"d", 1=>"a"}]
+irb(main):137:0> h[5] = 'e'
+=> "e"
+irb(main):138:0> a3[0]
+=> {2=>"b", 3=>"c", 4=>"d", 1=>"a"}
+irb(main):139:0> a1[0]
+=> {2=>"b", 3=>"c", 4=>"d", 1=>"a", 5=>"e"}
+irb(main):140:0> a2[0]
+=> {2=>"b", 3=>"c", 4=>"d"}
+irb(main):141:0>
+
+but for some reason it doesn't.
+              2:20pm
+I'm going to recreate the model of the sleep log file (with strings, instead of objects, as keys), then run the following, and manually change one of a_hash's inner hashes, then see if the change propogates:
+
+# original dates hash
+odh = {}
+dates_array = a_hash.keys.sort
+dates_array.each do |a_key|
+  odh[a_key] = a_hash[a_key].dup
+end
+              3:51pm
+weird, this meets my expectations:
+
+irb(main):191:0> a_hash == odh
+=> true
+irb(main):192:0> a_hash['07DEC2010TUE']['foo'] = 'bar'
+=> "bar"
+irb(main):193:0> a_hash == odh
+=> false
+irb(main):194:0>
+
+but if your code works like you expect, why was it when you first finished modifying a_hash, you found that it was the same as original date hash?
+              4:17pm
+oh, I figured it out.  The problem is, I was calling dup on each date's hash in the same iterative loop as I was modifying the original hash.  My next move is to first copy the entire hash, and then modify it, so I'll need to add another iterative loop for the copying before the modifying.
+
+08AUG2011MON
+              5:24pm
+after reviewing my working code, I've gotten to a stage where I model the file containing my sleep log, then pare down the model to only include log entries that contain either begin or end information for a sleep session.  Now my next step is to start doing the calculations for sleep sessions per day.  To do this, I need to further refine my model so that each day has the information for the sleep sessions that belong to it.  I decided that if a day ends with a "turn in", then that sleep session belongs to it, even if the "woke" was for the following day.  Thus, for a particular day, if the first log entry starts with woke, then that information needs to be put into the previous day.  If the last log entry starts with "turn in", that day is missing information that can be collected from the next day.
+              5:33pm
+a_hash.keys.each {|a_key| p a_hash[a_key]}
+
+# original dates hash
+odh = {}
+dates_array = a_hash.keys.sort
+dates_array.each do |a_key|
+  original_dates_hash[a_key] = a_hash[a_key].dup
+  if a_key == dates_array.first
+    # hash of times for first date
+  ...
+  end
+end
+              5:42pm
+given a hash of dates, if the hash for the first date has "woke" as the first value, delete that key/value pair.  If the hash for the last date has "turn in" as the last value, delete that key/value pair.  Otherwise, for all the other dates, if a date starts with "woke", move it to the previous date.
+              7:04pm
+before I run the code I've been working on, I'm going to lay out the assumptions.  original_dates_hash will hopefully be a copy of a_hash, before we change the time_hashes associated with each a_hash date.
+
+thus, after we run the code, the following two outputs should be identical:
+
+a_hash.keys.sort.each {|a_key| p a_hash[a_key]}
+original_dates_hash.keys.sort.each {|a_key| p a_hash[a_key]}
+              7:12pm
+bzzt, the original_dates_hash is just like the modified a_hash.  While I did complete my objective of refactoring the model so that all sleep sessions belong to a day, I still have no idea how to preserve the state of the original model.
+
+06AUG2011SAT
+             10:59am
+require 'date'
+require 'time'
+...
+    ato = Time.parse(ats, "%I:%M%p", a_date)
+...
+end
+
+this gives:
+ArgumentError: wrong number of arguments (3 for 2)
+             11:20am
+...
+    ato = Time.parse(ats, a_date)
+    p ato.to_s
+...
+end
+
+this gives:
+"2010-12-09"
+"1970-01-01 00:01:00 -0800"
+"1970-01-01 00:26:00 -0800"
+"1970-01-01 04:56:00 -0800"
+"1970-01-01 11:50:00 -0800"
+"1970-01-01 14:34:00 -0800"
+
+I think because, in the conditional block, a_date's value is lost
+             11:28am
+I think I need to create the hash first, and then parse the dates and times.
+             11:31am
+require 'date'
+require 'time'
+
+f = open('sample_sleep.txt')
+# ra1 == ruby array, number 1
+ra1 = f.readlines
+a_hash = {}
+ra1.each do |line|
+  if line.index(/[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]{3}/) == 0
+    a_date = Date.strptime(line.rstrip, "%d%b%Y%a")
+    p a_date.to_s
+  elsif line.index(/             [0-9]{2}(:[0-9]{2})?(am|pm)/) == 0 or line.index(/              [0-9](:[0-9]{2})?(am|pm)/)
+    # ats = a time string
+    ats = line.strip
+    # ats = a time object associated with a past date
+    ato = Time.parse(ats, a_date)
+    p ato
+  end
+end
+             11:55am
+before I can refactor my existing code so that it can populate a hash while iterating over an array, I need to reunderstand ruby iteration
+             12:01pm
+http://blog.jayfields.com/2008/03/ruby-inject.html
+
+this code makes me remember something about what I did:
+  grouped[test_result.status] = [] if grouped[test_result.status].nil?
+  grouped[test_result.status] << test_result
+             12:02pm
+require 'date'
+require 'time'
+
+f = open('sample_sleep.txt')
+# ra1 == ruby array, number 1
+ra1 = f.readlines
+a_hash = {}
+ra1.each do |line|
+  an_index = a_hash.length - 1
+  if line.index(/[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]{3}/) == 0
+    # ads = a date string
+    ads = line.rstrip
+    # ado = a date object
+    ado = Date.strptime(ads, "%d%b%Y%a")
+    a_hash[ads] ||= {}
+  elsif line.index(/             [0-9]{2}(:[0-9]{2})?(am|pm)/) == 0 or line.index(/              [0-9](:[0-9]{2})?(am|pm)/)
+    ado = a_hash.keys[an_index]
+    p ado.to_s
+    # ats = a time string
+    ats = line.strip
+    # ato = a time object associated with a past date
+#    ato = Time.parse(ats, ado)
+#    p ato.to_s
+    a_hash[ado][ats] ||= ""
+  else
+    ado = a_hash.keys[an_index]
+    inner_hash = a_hash[ado]
+    log_entry = line.strip
+    a_hash[ado][inner_hash.keys.last] << log_entry
+  end
+end
+              2:13pm
+finally got over a major obstacle and am now making good progress.  I kept trying to use the variable a_date, which was set in an earlier condition, within a later condition, which we know won't work, since with each new iteration, the state from the previous iterations are annihilated.  Now I am at a point where I believe I've created and populated my first hash, which I want to have date objects as keys, and the keys to have a subhash, so that each date has a hash of time values as keys and "turn in" or "woke" as values.  However, since the objects are hard to work with, given they exist in computer memory, I am temporarily switching the keys from objects to strings, so that I can confirm the state of the hash is what I want, where I model the entire file as a hash.  Once I do this, my next move will be to install filters so that only log entries that have "turn in" and "woke" are recorded in the hash.
+              2:48pm
+excellent, I've completed, and confirmed by testing, the version of my code that models the log file as a hash, with the keys for the hashes being strings.  My next move is to create a version of the code that models the file has a hash, but has objects as keys of the hashes.
+              2:55pm
+require 'date'
+require 'time'
+
+f = open('sample_sleep.txt')
+# ra1 == ruby array, number 1
+ra1 = f.readlines
+a_hash = {}
+ra1.each do |line|
+  an_index = a_hash.length - 1
+  if line.index(/[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]{3}/) == 0
+    # ads = a date string
+    ads = line.rstrip
+    # ado = a date object
+    ado = Date.strptime(ads, "%d%b%Y%a")
+    a_hash[ado] ||= {}
+  elsif line.index(/             [0-9]{2}(:[0-9]{2})?(am|pm)/) == 0 or line.index(/              [0-9](:[0-9]{2})?(am|pm)/)
+    ado = a_hash.keys[an_index]
+    #p ado.to_s
+    # ats = a time string
+    ats = line.strip
+    # ato = a time object associated with a past date
+    ato = Time.parse(ats, ado)
+    p ato.to_s
+    a_hash[ado][ato] ||= ""
+  else
+    ado = a_hash.keys[an_index]
+    inner_hash = a_hash[ado]
+    log_entry = line.strip
+    a_hash[ado][inner_hash.keys.last] << log_entry
+  end
+end
+              3:11pm
+finished version of the code that models the file has a hash, but has keys of the hashes as objects.  My next move is, given a model of the file, create a hash that has date objects as keys and as values the periods of sleep that belong to that date.  When creating this new hash, I can remove the key value pairs from each date's inner hash where the log entry isn't "turn in" or "woke".
+              3:59pm
+# o_key == outer hash key
+a_hash.keys.each do |o_key|
+  # i_key == inner hash key
+  a_hash[o_key].each do |i_key|
+    log_entry = a_hash[o_key][i_key]
+    if log_entry.start_with?"turn in" or log_entry.start_with?"woke"
+      next
+    else
+      ...
+    end
+  end
+end
+              4:12pm
+I was going to finish the above, but decided against it, as I looked over Hash api, and found out about hsh.delete_if
+
+# o_key == outer hash key
+a_hash.keys.each do |o_key|
+  inner_hash = a_hash[o_key]
+  inner_hash.delete_if do |key, value|
+    not value.start_with?("turn in", "woke")
+  end
+end
+
+# display contents of hash
+a_hash.keys.each {|a_key| p a_hash[a_key]}
+              4:31pm
+finished piece that deletes any key value pairs in each date's inner hash where the log entry doesn't start with "turn in" or "woke"
+
+05AUG2011FRI
+              9:49pm
+eureka, I found it:
+:\Sites\test_app>irb
+rb(main):001:0> require 'time'
+> true
+rb(main):002:0> a_time = Time.parse("2:34pm")
+> 2011-08-05 14:34:00 -0700
+rb(main):003:0> require 'date'
+> true
+rb(main):004:0> a_date = Date.parse("10JUL2011SUN")
+> #<Date: 2011-07-10 (4911505/2,0,2299161)>
+rb(main):005:0> a_date.to_s
+> "2011-07-10"
+rb(main):006:0> a_time2 = Time.parse("5:44am", a_date)
+> 2011-07-10 05:44:00 -0700
+rb(main):007:0>
+
+04AUG2011THU
+              1:47pm
+for today, I'd like to get as far as recognizing dates and times.
+
+f = open('sample_sleep.txt')
+# ra1 == ruby array, number 1
+ra1 = f.readlines
+ra1.each do |line|
+  if line.start_with("")
+end
+              1:58pm
+ok, I was going to use
+
+  if line.start_with("")
+
+but I realize that start_with() works with actual strings, and not regular expressions.  I will use:
+
+  if line.index() == 0
+              2:03pm
+now I need to come up with the regex to match date:
+
+"04AUG2011THU".match('[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]{3}')
+
+"              2:03pm".match('              [0-9]:[0-9]{2}(am|pm)')
+"              2:03am".match('              [0-9]:[0-9]{2}(am|pm)')
+"             2:03am".match('              [0-9]:[0-9]{2}(am|pm)')
+"              203am".match('              [0-9]:[0-9]{2}(am|pm)')
+"             2203am".match('              [0-9]:[0-9]{2}(am|pm)')
+
+"              2pm".match('              [0-9](:[0-9]{2})?(am|pm)')
+"              2:03am".match('              [0-9](:[0-9]{2})?(am|pm)')
+"              2am".match('              [0-9](:[0-9]{2})?(am|pm)')
+"             12am".match('              [0-9](:[0-9]{2})?(am|pm)')
+"             2:03am".match('              [0-9](:[0-9]{2})?(am|pm)')
+"              2:3pm".match('              [0-9](:[0-9]{2})?(am|pm)')
+"              203am".match('              [0-9](:[0-9]{2})?(am|pm)')
+"             2203am".match('              [0-9](:[0-9]{2})?(am|pm)')
+
+"             12:39pm".match('             [0-9]{2}(:[0-9]{2})?(am|pm)')
+"             12am".match('             [0-9]{2}(:[0-9]{2})?(am|pm)')
+"             12:5am".match('             [0-9]{2}(:[0-9]{2})?(am|pm)')
+
+"             12pm"
+              3:15pm
+f = open('sample_sleep.txt')
+# ra1 == ruby array, number 1
+ra1 = f.readlines
+ra1.each do |line|
+  if line.index(/[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]{3}/) == 0
+    p line
+  elsif line.index(/             [0-9]{2}(:[0-9]{2})?(am|pm)/) == 0 or line.index(/              [0-9](:[0-9]{2})?(am|pm)/)
+    p line
+  end
+end
+              3:33pm
+my next step is to create a hash that has as keys date objects, and the values will be the time objects.  Before I create and populate the hash, I will parse the strings as objects.
+              3:43pm
+a_date = Date.strptime("04AUG2011THU", "%d%b%Y%a")
+              3:51pm
+irb(main):068:0> a_date = Date.strptime("04AUG2011THU", "%d%b%Y%a")
+NameError: uninitialized constant Object::Date
+irb(main):073:0> import 'Date'
+NoMethodError: undefined method `import' for main:Object
+        from (irb):73
+        from C:/RailsInstaller/Ruby1.9.2/bin/irb:12:in `<main>'
+irb(main):074:0> Date
+NameError: uninitialized constant Object::Date
+        from (irb):74
+        from C:/RailsInstaller/Ruby1.9.2/bin/irb:12:in `<main>'
+irb(main):075:0> require 'date'
+=> true
+irb(main):076:0> a_date = Date.strptime("04AUG2011THU", "%d%b%Y%a")
+=> #<Date: 2011-08-04 (4911555/2,0,2299161)>
+              4:01pm
+require 'date'
+
+f = open('sample_sleep.txt')
+# ra1 == ruby array, number 1
+ra1 = f.readlines
+ra1.each do |line|
+  if line.index(/[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]{3}/) == 0
+    a_date = Date.strptime(line.rstrip, "%d%b%Y%a")
+    p a_date.to_s
+  elsif line.index(/             [0-9]{2}(:[0-9]{2})?(am|pm)/) == 0 or line.index(/              [0-9](:[0-9]{2})?(am|pm)/)
+    # ats = a time string
+    ats = line.strip
+#    ato = Date.strptime(ats, "%I:%M%p")
+#    p ato.to_s
+    p ats
+  end
+end
+              4:50pm
+it's very frustrating, it is at this moment I hate the person who took my flash drive at opl main the most.  I remember there was some way I was able to parse a time string, given an existing date object, but I don't remember how I did it.
+              5:15pm
+I'm going to need to ask an expert for some help.  Here's what I know, in order to create the context:
+
+a_date = Date.strptime("04AUG2011THU", "%d%b%Y%a")
+
+irb(main):152:0> ato = DateTime.strptime("4:56am", "%I:%M%p")
+=> #<DateTime: 2011-08-04T04:56:00+00:00 (442039987/180,0/1,2299161)>
+irb(main):153:0> ato.to_s
+=> "2011-08-04T04:56:00+00:00"
+              5:36pm
+I think for now I can use DateTime.strptime, and then, when it comes time to find the number of hours between times, we'll cross that bridge when we get there
+
+17MAY2011TUE
+              2:06am
+I forgot how to iterate in Ruby, but it's coming back to me:
+
+f = open('sample_sleep.txt')
+# ruby array, number 1
+ra1 = f.readlines
+ra1.each do |line|
+  p line
+end
+              2:12am
+my next move is to figure out the significant conditions, the regular expression or string patterns that signify something important I want to capture, i.e., either parse as a date or time, or if it's "turn in" or "woke", assign to a time.  Then after I create the first hash, I have to create a second hash, which associates sessions of sleep with a certain date.
